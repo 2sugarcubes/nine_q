@@ -1,6 +1,7 @@
 use std::{cell::RefCell, default::Default};
 
 use log::{debug, error, info, trace, warn};
+use pbr::ProgressBar;
 
 #[derive(Default, Clone)]
 pub struct WordTree {
@@ -17,10 +18,7 @@ impl Default for LetterNode {
     fn default() -> Self {
         LetterNode {
             // 26 Nones
-            children: vec![
-                None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                None, None, None, None, None, None, None, None, None, None, None, None,
-            ],
+            children: vec![None; 26],
             is_terminator: false,
         }
     }
@@ -89,10 +87,12 @@ impl WordTree {
     }
 
     pub fn generate(&mut self, words: &[String]) {
+        let mut pb = ProgressBar::new(words.len() as u64);
         for word in words {
             // reverse the string for easy popping
             let word = word.chars().rev().collect::<String>();
             self.root.generate(word);
+            pb.inc();
         }
         info!("Consumed {} words", words.len());
     }
