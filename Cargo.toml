@@ -3,4 +3,25 @@ name = "nine_q"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "nine_q_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nine_q"
+path = "src/main.rs"
+required-features = ["binary-build"]
+
+[features]
+binary-build = ["env_logger"]
+
+[dev-dependencies]
+env_logger = "0.11"
+
 [dependencies]
+log = "0.4"
+rayon = "1.10"
+rayon-progress = "1.0.0"
+pbr = "1.1.1"
+
+env_logger = { version = "0.11", optional = true }
