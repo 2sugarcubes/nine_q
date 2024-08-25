@@ -23,5 +23,6 @@ log = "0.4"
 rayon = "1.10"
 rayon-progress = "1.0.0"
 pbr = "1.1.1"
+clap = { version = "4.5.16", features = ["derive"] }
 
 env_logger = { version = "0.11", optional = true }
