@@ -8,6 +8,7 @@ use std::time::Instant;
 use std::{io, sync, thread};
 use word_tree::WordTree;
 
+pub mod game;
 pub mod word_tree;
 
 pub fn load_words_from_disk<P>(path: P) -> io::Result<WordTree>

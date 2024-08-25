@@ -30,7 +30,7 @@ const LETTER_FROM_ID: &[char] = &[
     't', 'u', 'v', 'w', 'x', 'y', 'z',
 ];
 
-fn letter_to_id(letter: char) -> usize {
+fn letter_to_id(letter: &char) -> usize {
     match letter {
         'a' => 0,
         'b' => 1,
@@ -101,6 +101,14 @@ impl WordTree {
         self.root.get_words(String::new(), &mut result);
         info!("Found {} total words in tree", result.len());
         result
+    }
+    pub fn solve(&self, available_letters: &String) -> Vec<String> {
+        let mut available_letters: Vec<char> = available_letters.chars().collect();
+        available_letters.sort();
+        let mut results = Vec::new();
+        self.root
+            .solve(available_letters, String::new(), &mut results);
+        results
     }
 }
 
@@ -205,6 +213,35 @@ impl LetterNode {
         if self.is_terminator() {
             info!("Adding word {} to results", working_word);
             results.push(working_word);
+        }
+    }
+
+    fn solve(&self, available_letters: Vec<char>, current_word: String, results: &mut Vec<String>) {
+        let mut thin_letters = available_letters.clone();
+        thin_letters.dedup();
+        for c in thin_letters.iter() {
+            if self.children[letter_to_id(c)].is_some() {
+                // There is at least one word that has this caracter in this location
+                // This character must exist in the pool of available_letters
+                let first_index = available_letters.binary_search(c).unwrap();
+                let mut next_available_letters = available_letters.clone();
+                next_available_letters.remove(first_index);
+
+                // Set up next word
+                let mut next_word = current_word.clone();
+                next_word.push(*c);
+
+                // Recurse
+                self.children
+                    .get(letter_to_id(c))
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .solve(next_available_letters, next_word, results);
+            }
+        }
+        if self.is_terminator() {
+            results.push(current_word);
         }
     }
 }
