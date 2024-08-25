@@ -2,6 +2,7 @@ use std::{cell::RefCell, default::Default};
 
 use log::{debug, error, info, trace, warn};
 use pbr::ProgressBar;
+use rayon::prelude::*;
 
 #[derive(Default, Clone)]
 pub struct WordTree {
@@ -24,9 +25,9 @@ impl Default for LetterNode {
     }
 }
 
-const LETTER_FROM_ID: &[&str] = &[
-    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s",
-    "t", "u", "v", "w", "x", "y", "z", "\n",
+const LETTER_FROM_ID: &[char] = &[
+    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
+    't', 'u', 'v', 'w', 'x', 'y', 'z',
 ];
 
 fn letter_to_id(letter: char) -> usize {
@@ -69,7 +70,8 @@ fn letter_to_id(letter: char) -> usize {
 impl WordTree {
     pub fn new(words: &[String]) -> Self {
         let mut tree = Self::default();
-        tree.generate(words);
+        let mut words = words.to_owned();
+        tree.generate(&mut words);
         trace!(
             "First layer of tree {:?}",
             tree.root
@@ -79,21 +81,18 @@ impl WordTree {
                 .zip(0..tree.root.children.len())
                 .map(|(c, i)| match c.is_some() {
                     true => LETTER_FROM_ID[i],
-                    false => "_",
+                    false => '_',
                 })
-                .collect::<Vec<&str>>()
+                .collect::<Vec<char>>()
         );
         tree
     }
 
-    pub fn generate(&mut self, words: &[String]) {
-        let mut pb = ProgressBar::new(words.len() as u64);
-        for word in words {
-            // reverse the string for easy popping
-            let word = word.chars().rev().collect::<String>();
-            self.root.generate(word);
-            pb.inc();
-        }
+    pub fn generate(&mut self, words: &mut [String]) {
+        words.par_sort();
+        let mut vec_words: Vec<String> = words.into();
+        vec_words.dedup();
+        self.root = LetterNode::new(vec_words);
         info!("Consumed {} words", words.len());
     }
 
@@ -106,29 +105,72 @@ impl WordTree {
 }
 
 impl LetterNode {
-    pub fn new(remaining_word: String) -> Self {
-        let mut this = LetterNode::default();
-        this.generate(remaining_word);
-        this
-    }
+    pub fn new(remaining_words: Vec<String>) -> Self {
+        // The empty string should be sorted to the end of the list
+        let is_terminator = remaining_words
+            .first()
+            .unwrap_or(&"".to_string())
+            .is_empty();
 
-    pub fn generate(&mut self, mut remaining_word: String) {
-        if let Some(next_letter) = remaining_word.pop() {
-            let id = letter_to_id(next_letter);
-
-            // Make the node if it doesn't exist yet
-            if self.children[id].is_none() {
-                info!("Adding child node {}", next_letter);
-                self.children[id] = Some(LetterNode::new(remaining_word));
-            } else if let Some(mut child) = self.children[id].clone() {
-                // Go into the node and keep making any missing nodes
-                child.generate(remaining_word);
-                self.children[id] = Some(child);
+        for i in 1..remaining_words.len() - 1 {
+            if remaining_words[i].is_empty() {
+                warn!("Empty string was found at index {}", i);
             }
-        } else {
-            // This is a terminal node
-            trace!("Marking this node as terminal");
-            self.is_terminator = true;
+        }
+
+        let mut children: [Option<LetterNode>; 26] = [
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None,
+        ];
+
+        let mut end = remaining_words.len();
+        if remaining_words.last() == Some(&"".to_string()) {
+            // Ignore the last string if it is empty
+            end -= 1;
+        }
+        for (i, c) in (0..26_usize).zip(LETTER_FROM_ID.iter()).rev() {
+            let start = remaining_words
+                .binary_search(&c.to_string())
+                .unwrap_or_else(|i| i);
+
+            if start >= end {
+                // No words found for this letter.
+                children[i] = None;
+                //trace!("Char '{}' not found.", c);
+            } else {
+                // Scope to words starting with the right letter
+                if remaining_words.len() <= 10 {
+                    trace!("words={:?}", remaining_words);
+                }
+                let dequed_words = remaining_words[start..end]
+                    .iter()
+                    // Deque the first letter of the word (we already removed the empty string if there
+                    // was one, so this shouldn't panic)
+                    .map(|s| {
+                        if s.is_empty() {
+                            panic!("String should not be empty")
+                        } else if !s.starts_with(*c) {
+                            panic!(
+                                "String ({}) is not sorted, expected {} start={} end={}",
+                                s, c, start, end
+                            );
+                        }
+                        s[1..].to_string()
+                    })
+                    .collect::<Vec<String>>();
+                children[i] = Some(LetterNode::new(dequed_words));
+
+                if start == 0 {
+                    break;
+                }
+                // Look for the next letter
+                end = start;
+            }
+        }
+
+        LetterNode {
+            children: children.into(),
+            is_terminator,
         }
     }
 
@@ -149,7 +191,8 @@ impl LetterNode {
         );
         for (i, child) in (0_usize..self.children.len()).zip(self.children.iter()) {
             if let Some(child) = child {
-                let next_word = working_word.clone() + LETTER_FROM_ID[i];
+                let mut next_word = working_word.clone();
+                next_word.push(LETTER_FROM_ID[i]);
                 trace!(
                     "Decending to child {} with word {}",
                     LETTER_FROM_ID[i],
@@ -176,7 +219,7 @@ mod test {
     fn zoo() {
         init_logger();
         let mut test_data = WordTree::default();
-        test_data.generate(&["zoo".to_owned()]);
+        test_data.generate(&mut ["zoo".to_string()]);
         assert_eq!(test_data.get_words(), ["zoo".to_string()]);
     }
 
